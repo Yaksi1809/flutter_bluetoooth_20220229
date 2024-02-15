@@ -1,102 +1,122 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue/flutter_blue.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 void main() => runApp(const MyApp());
 
-class MyApp extends StatelessWidget
-{
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     return const MaterialApp(
-      home: BluetoothApp(),
+      debugShowCheckedModeBanner: false,
+      title: 'Bluetooth',
+      home: Bluetooth(),
     );
   }
 }
 
-class BluetoothApp extends StatefulWidget
-{
-  const BluetoothApp({super.key});
+class Bluetooth extends StatefulWidget {
+  const Bluetooth({super.key});
 
   @override
-  _BluetoothAppState createState() => _BluetoothAppState();
+  // ignore: library_private_types_in_public_api
+  _BluetoothState createState() => _BluetoothState();
 }
 
-class _BluetoothAppState extends State<BluetoothApp>
-{
-  FlutterBlue flutterBlue = FlutterBlue.instance;
-  List<BluetoothDevice> devicesList = [];
+class _BluetoothState extends State<Bluetooth> {
+  FlutterBluePlus flutterBluePlus = FlutterBluePlus();
+  List<ScanResult> dispositivo = [];
+  bool scanning = false;
+  BluetoothDevice? connectedDevice;
 
   @override
-  void initState()
-  {
+  void initState() {
     super.initState();
-    _startScanning();
+    _startScan();
   }
 
+  _startScan() {
+    setState(() {
+      scanning = true;
+    });
+    FlutterBluePlus.startScan(timeout: const Duration(seconds: 4));
 
-  void _startScanning()
-  {
-    flutterBlue.startScan(timeout: const Duration(seconds: 4));
+    FlutterBluePlus.scanResults.listen((results) {
+      setState(() {
+        dispositivo = results;
+      });
+    });
+  }
 
-    flutterBlue.scanResults.listen((results)
-    {
-      for (ScanResult r in results)
-      {
-        if (!devicesList.contains(r.device))
-        {
-          setState(() {
-            devicesList.add(r.device);
-          });
-        }
+  _connectToDevice(BluetoothDevice device)  async {
+    // ignore: deprecated_member_use
+    if (connectedDevice != null && connectedDevice!.id == device.id) {
+      await connectedDevice!.disconnect();
+      setState(() {
+        connectedDevice = null;
+      });
+    } else {
+      try {
+        await device.connect();
+        setState(() {
+          connectedDevice = device;
+        });
+      } catch (error) {
+        // ignore: use_build_context_synchronously
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              // ignore: deprecated_member_use
+              title: const Text('Connection error'),
+              content: const Text(
+                  'Could not connect to the device. Please try again later.'),
+              actions: <Widget>[
+                TextButton(
+                  child:const Text('Accept'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
       }
-    });
-
-    flutterBlue.isScanning.listen((isScanning) {
-      print("Scanning: $isScanning");
-    });
-  }
-
-  void _connectToDevice(BluetoothDevice device) async
-  {
-    try 
-    {
-      await device.connect(timeout: const Duration(seconds: 4));
-      print("Connected to ${device.name}");
-    } catch (e) {
-      print("Error connecting to ${device.name}: $e");
     }
   }
 
-  void _disconnectDevice(BluetoothDevice device)
-  {
-    device.disconnect();
-    print("Disconnected from ${device.name}");
-  }
-
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bluetooth Devices'),
+        title: const Text('Bluetooth Device'),
       ),
-      body: ListView.builder(
-        itemCount: devicesList.length,
-        itemBuilder: (context, index){
-          BluetoothDevice device = devicesList[index];
-          return ListTile(
-            title: Text(device.name ?? "Unknown Device"),
-            subtitle: Text(device.id.toString()),
-            trailing: ElevatedButton(
-              onPressed: () => _connectToDevice(device),
-              child: const Text('Connect'),
+      body: 
+        ListView.builder(
+          itemCount: dispositivo.length,
+            itemBuilder: (context, index) {
+              return ListTile(
+                // ignore: deprecated_member_use
+                title: Text(dispositivo[index].device.name),
+                // ignore: deprecated_member_use
+                subtitle: Text(dispositivo[index].device.id.toString()),                
+                trailing: ElevatedButton(
+                onPressed: () =>
+                   _connectToDevice(dispositivo[index].device),
+                    // ignore: deprecated_member_use
+                    child: connectedDevice != null && connectedDevice!.id == dispositivo[index].device.id
+                        ? const Text('Disconnect')
+                        : const Text('Connect'),
+                  ),
+                );
+              },
             ),
-            onLongPress: () => _disconnectDevice(device),
-          );
-        }
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _startScan(),
+        child: const Icon(Icons.bluetooth_searching),
       ),
     );
   }
